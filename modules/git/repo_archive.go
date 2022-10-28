@@ -9,6 +9,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -51,13 +53,22 @@ func (repo *Repository) CreateArchive(ctx context.Context, format ArchiveType, t
 		args = append(args, "--prefix="+filepath.Base(strings.TrimSuffix(repo.Path, ".git"))+"/")
 	}
 
+	// Create an empty dir to make sure LFS does not install any hooks
+	emptyDir, err := ioutil.TempDir(os.TempDir(), "archive-hooks")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %v", err)
+	}
+	defer os.Remove(emptyDir)
+
 	args = append(args,
 		"--format="+format.String(),
 		commitID,
+		"-c",
+		"core.hooksPath="+emptyDir,
 	)
 
 	var stderr strings.Builder
-	err := NewCommandContext(ctx, args...).RunInDirPipeline(repo.Path, target, &stderr)
+	err = NewCommandContext(ctx, args...).RunInDirPipeline(repo.Path, target, &stderr)
 	if err != nil {
 		return ConcatenateError(err, stderr.String())
 	}
